@@ -1,0 +1,38 @@
+package Physical_Types
+public
+  with Data_Model;
+
+--electrical potential measurement 
+data Voltage
+  properties
+    Data_Model::Measurement_Unit=>"Physical_Properties::Voltage_Units";
+end Voltage;
+
+--electrical current measurement  
+data Current
+  properties
+    Data_Model::Measurement_Unit=>"Physical_Properties::Current_Units";
+end Current;
+
+--physical liquid flow
+data Fluid_Flow
+  properties
+    Data_Model::Measurement_Unit=>"ml_per_hr";
+end Fluid_Flow;
+  
+data Fluid_Volume
+  properties
+    Data_Model::Measurement_Unit=>"ml";
+end Fluid_Volume;
+  
+data Light_Wavelength  
+  properties
+    Data_Model::Measurement_Unit=>"nm";
+end Light_Wavelength;
+  
+data Light_Intensity  
+  properties
+    Data_Model::Measurement_Unit=>"lumens";
+end Light_Intensity;
+  
+end Physical_Types;

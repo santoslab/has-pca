@@ -1,0 +1,52 @@
+package PCA_Boss
+public
+with PCA_Types;
+-- PCA_Properties;
+
+--the boss thread executes Use Case 1:  Normal Operation
+--and ancillary events.  therefore, there really isn't any
+--formal specification, just validation that the ues/exception 
+--cases were done correctly
+--contained by PCA_Operation::Operation_Thread_Group
+thread Boss_Thread
+  features
+    POST_done: in event port;                   --power-on self-test completed
+    POST_fail: in event port;                   --power-on self-test failure
+    Display_Message: out event data port PCA_Types::Message;  --message to be displayed on control panel and ICE console
+    Sound_Type: out event data port PCA_Types::Sound;      --sound to be made by control panel and ICE console
+    Stop_Button_Pressed: in event port;         --stop button was pressed
+    Start_Button_Pressed: in event port;        --start button was pressed
+    Do_Scan: out event port;                    --tell scanner to scan
+    Scan_Done: in event port;                   --scan completed
+    Authenticate_Clinician: out event port;     --do clinican authentication
+    Authenticate_Patient: out event port;       --do patient authentication
+    Authenticate_Prescription: out event port;  --do prescription authentication
+    Authentication_fail: in event port;         --authentication failed
+    Authentication_pass: in event port;         --authentication passed
+    Check_Rx: out event port;                   --check drug
+    Drug_Not_In_Library: in event port;         --drug is not in library
+    Hard_Limit_Violated: in event port;         --hard limit was violated
+    Reject_Soft_Limit_Exception: in event port;                   --clinician did not accept soft limit violation
+    Confirm_Soft_Limit_Exception: in event port;                  --prescription confirmed
+    Rx_Okay: in event port; 
+    Door_Closed: in event port;                 --the drug door was closed
+    Begin_Priming: out event port;              --start priming
+    End_Priming: out event port;                --stop priming
+    Prime_Failure: out event port;              --priming not stopped in time
+    Begin_Infusion: out event port;             --start infusion
+    Halt_Infusion: out event port;              --stop infusion
+    Turn_Off: in event port;                    --the "off" switch was pressed
+  --log events
+    Log_Event: out event data port PCA_Types::Event_Record;   
+  properties
+    Thread_Properties::Dispatch_Protocol=>Aperiodic;  
+end Boss_Thread;
+
+thread implementation Boss_Thread.imp
+
+end Boss_Thread.imp;
+
+
+
+
+end PCA_Boss;

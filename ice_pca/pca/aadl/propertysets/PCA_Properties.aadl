@@ -1,0 +1,76 @@
+property set PCA_Properties is
+  with 
+    PCA_Types,
+--    Timing_Properties, --PCA_Pump,
+    PCA_Mechanical,PCA_Power, Physical_Properties,
+      PCA_Operation_Threads;
+  
+  --period for PCA component that are periodic or hybrid
+  PCA_Period : --Timing_Properties::
+    Time => 5 ms applies to (all);
+  
+  --maximum number of drug library entries
+  Drug_Library_Size : aadlinteger => 500 applies to (PCA_Types::Drug_Library);
+  --maximum number of fault log records 
+  Fault_Log_Size : aadlinteger => 150 applies to (PCA_Types::Fault_Log);
+  --maximum number of event log records 
+  Event_Log_Size : aadlinteger => 1500 applies to (PCA_Types::Fault_Log);
+  
+  --6.3 Power Supply
+  Battery_Measurement_Period : --Timing_Properties::
+     Time => 1 min applies to (PCA_Power::power_control);
+  --R6.3.0(1) The PCA pump shall continue to infuse for 10 minutes during interruption of 
+  --  mains electricity supply, either continuously or spread over an hour.
+  Battery_Power_Duration : --Timing_Properties::
+    Time => 10 min applies to (PCA_Power::power_control);
+  --fully-charged battery voltage chosen arbitrarily
+  Full_Battery_Voltage : Physical_Properties::Voltage => 5 V applies to (PCA_Power::power_control);
+  --R6.3.0(4) If the estimated battery life remaining is less than ∆lba = 3 minutes, 
+  --  the pump shall issue a low-battery warning.
+  --  (3 min/10 min) * 5V = 1.5V or 1500 mV
+  Low_Battery_Voltage : Physical_Properties::Voltage => 1500 mV applies to (PCA_Power::power_control);
+  --R6.3.0(5) battery failure alarm
+  Defective_Battery_Voltage : Physical_Properties::Voltage => 500 mV applies to (PCA_Power::power_control);
+  --R6.3.0(6) voltage out-of-range warning
+  Maximum_Power_Voltage : Physical_Properties::Voltage => 6 V applies to (PCA_Power::power_control);
+  Minimum_Power_Voltage : Physical_Properties::Voltage => 4 V applies to (PCA_Power::power_control);
+  
+  
+  --drug flow
+  --the pump must move fluid within this tolerance
+  Commanded_Drug_Flow_Rate_Tolerance : Physical_Properties::Fluid_Flow_Rate=> 1 mlPerHour  
+     applies to (PCA_Mechanical::pump);
+  --the flow sensors must be accurate to within this tolerance
+  Measured_Drug_Flow_Rate_Tolerance : Physical_Properties::Fluid_Flow_Rate=> 1 mlPerHour  
+     applies to (PCA_Mechanical::upstream_monitor,PCA_Mechanical::downstream_monitor);
+  --buffer volume for max drug per hour to drop to KVO rate before exceeding
+  Maximum_Drug_Per_Hour_Tolerance : Physical_Properties::Fluid_Volume=> 3 ml  
+     applies to (PCA_Operation_Threads::Max_Drug_Per_Hour_Watcher);
+    
+  --keep-vein-open rate
+  KVO_Rate_Constant : constant  Physical_Properties::Fluid_Flow_Rate=> 1 mlPerHour;  
+  KVO_Rate : Physical_Properties::Fluid_Flow_Rate=> PCA_Properties::KVO_Rate_Constant applies to (all);
+  --max rate of infusion, note unit change from KVO/Max
+  Max_Rate : constant  Physical_Properties::Fluid_Flow_Rate=> 10 mlPerMinute;
+  --rate of infusion during pump priming
+  Prime_Rate : Physical_Properties::Fluid_Flow_Rate=>PCA_Properties::Max_Rate applies to (all);
+--  Prime_Rate : constant Physical_Properties::Fluid_Flow_Rate=>PCA_Properties::Max_Rate;
+  --duration of priming  
+  Prime_Time_Constant : constant --Timing_Properties::
+    Time=> 6 sec;
+  Prime_Time : --Timing_Properties::
+    Time=>PCA_Properties::Prime_Time_Constant applies to (all);
+  --volume pumped to prime (=rate*time)
+  Priming_Volume_Constant : constant Physical_Properties::Fluid_Volume=> 1 ml;
+  Priming_Volume :  Physical_Properties::Fluid_Volume=>PCA_Properties::Priming_Volume_Constant applies to (all);
+
+  --patient button rate, effectively max rate
+  Patient_Button_Rate_Constant : constant  Physical_Properties::Fluid_Flow_Rate=> 10 mlPerMinute;
+  Patient_Button_Rate :  Physical_Properties::Fluid_Flow_Rate=>PCA_Properties::Patient_Button_Rate_Constant applies to (all);
+
+  --background thread dispatch period
+  Service_Thread_Period : constant --Timing_Properties::
+    Time=> 1 sec;
+
+     
+end PCA_Properties;

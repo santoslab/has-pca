@@ -1,0 +1,60 @@
+--PCA_Drug_Library.aadl
+
+--holds drug library contain in the PCA pump
+
+package PCA_Drug_Library
+  public
+  with
+    PCA_Types; 
+--    PCA_Properties;
+
+  
+--this represents the process that holds the drug Library
+process drug_library_process
+  features
+   --pharmacy loads drug library
+    Load_Drug_Library : in event data port PCA_Types::Drug_Library;
+    --ask for record for a drug code
+    Get_Drug_Record : in event data port PCA_Types::Drug_Code;
+    --fetched drug record, if given drug code is in drug library
+    The_Drug_Record : out event data port PCA_Types::Drug_Record;
+    --no library entry for given drug code
+    No_Drug_Found : out event port;  --no drug found having the given drug code
+end drug_library_process;
+
+--this represents the process implementation that holds the drug Library
+process implementation drug_library_process.imp
+  subcomponents
+    dlt : thread drug_library_thread.imp;
+  connections
+    ldl : port Load_Drug_Library->dlt.Load_Drug_Library;
+    gdr : port Get_Drug_Record->dlt.Get_Drug_Record;
+    dr : port dlt.The_Drug_Record->The_Drug_Record;  
+    ndf : port dlt.No_Drug_Found->No_Drug_Found;  
+--the drug library process is working if the drug library thread is working
+
+end drug_library_process.imp;
+
+--this represents the thread that stores & retrieves drug Library
+thread drug_library_thread
+  features
+    --pharmacy loads drug library
+    Load_Drug_Library : in event data port PCA_Types::Drug_Library;
+    --ask for record for a drug code
+    Get_Drug_Record : in event data port PCA_Types::Drug_Code;
+    --fetched drug record, if given drug code is in drug library
+    The_Drug_Record : out event data port PCA_Types::Drug_Record;
+     
+    No_Drug_Found : out event port;  --no drug found having the given drug code
+  properties
+    Dispatch_Protocol=>Aperiodic;    
+
+end drug_library_thread;
+
+--this represents the thread implementation that stores & retreives drug Library
+thread implementation drug_library_thread.imp
+ 
+end drug_library_thread.imp;
+
+
+end PCA_Drug_Library;

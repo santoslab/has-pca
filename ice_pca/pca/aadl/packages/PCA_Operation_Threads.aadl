@@ -1,0 +1,179 @@
+--PCA_Operation_Threads.aadl
+--holds threads for PCA_Operation::Operation_Thread_Group.imp
+
+
+package PCA_Operation_Threads
+public
+with --AADL_Project,
+  PCA_Pump, PCA_Types, Base_Types, ICE_Types, --PCA_Security, 
+  PCA_Properties;
+
+--detects when the maximum drug allowed per hour is reached
+--contained by PCA_Operation::Operation_Thread_Group
+thread Max_Drug_Per_Hour_Watcher
+features
+    Near_Max_Drug_Per_Hour: out event port; --near maximum drug infused in any hour
+    --Omitted : OD
+    Over_Max_Drug_Per_Hour: out event port; --over maximum drug infused in any hour
+    Infusion_Flow_Rate: in data port PCA_Types::Flow_Rate;  --rate to pump
+   	-- Low
+    Max_Drug_Per_Hour: in data port PCA_Types::Drug_Volume;  --prescribed maximum hourly limit on drug infusion
+  properties
+    Thread_Properties::Dispatch_Protocol => Hybrid;  --both event and period dispatches
+    Timing_Properties::Period => PCA_Properties::Service_Thread_Period;  --update outputs every 1s    
+end Max_Drug_Per_Hour_Watcher;
+
+thread implementation Max_Drug_Per_Hour_Watcher.imp
+
+end Max_Drug_Per_Hour_Watcher.imp;
+
+--rate control is the most important function, and the trickiest to specify
+--contained by PCA_Operation::Operation_Thread_Group
+thread Rate_Controller
+features
+  --pump control
+    Infusion_Flow_Rate: out data port PCA_Types::Flow_Rate;  --rate to pump
+  --status (what rate being pumped)
+    System_Status: out event data port PCA_Types::Status_Type;
+  --from boss thread
+    Begin_Infusion: in event port;  --the prescription approved for infusion
+    Begin_Priming: in event port;       --clinician pressed "prime" button 
+    End_Priming: in event port;         --clinician pressed "off" button  
+    Halt_Infusion: in event port;   --clinician pressed "stop" button
+  --from prescription checker
+    Square_Bolus_Rate: in data port PCA_Types::Flow_Rate; 
+    Patient_Bolus_Rate: in data port PCA_Types::Flow_Rate; 
+    Basal_Rate: in data port PCA_Types::Flow_Rate; 
+    VTBI: in data port PCA_Types::Drug_Volume; 
+  --from safety
+    HW_Detected_Failure: in event port;
+    Stop_Pump_Completely: in event port;  --stop the pump
+    Pump_At_KVO_Rate: in event port;  --keep vein open    
+    Alarm : in event data port PCA_Types::Alarm_Type;  --alarm indication
+    Warning : in event data port PCA_Types::Warning_Type;  --warning indication
+  --actions
+    Patient_Request_Not_Too_Soon: in event port;  --patient pressed bolus button not too soon
+  --reservoir
+    Door_Open: in data port Base_Types::Boolean;
+  --control panel
+    Pause_Infusion: in event port;
+    Resume_Infusion: in event port;
+    CP_Clinician_Request_Bolus: in event port;   --square bolus request from control panel
+    CP_Bolus_Duration: in event data port ICE_Types::Minute; --set square bolus time from control panel
+  --from Max_Drug_Per_Hour_Watcher
+    Near_Max_Drug_Per_Hour: in event port;  --near maximum drug infused in any hour
+    Over_Max_Drug_Per_Hour: in event port;  --over maximum drug infused in any hour
+  --from ICE:  danger detected-stop pumping
+    ICE_Stop_Pump: in event port;
+  properties
+    Thread_Properties::Dispatch_Protocol => Aperiodic;
+end Rate_Controller;
+
+thread implementation Rate_Controller.imp
+ 
+end Rate_Controller.imp;
+
+
+--checks prescriptions for hard and soft limits
+--contained by PCA_Operation::Operation_Thread_Group
+thread Prescription_Checker
+  features
+    Check_Rx: in event port;  --from boss thread
+    Prescription: in data port PCA_Types::Prescription;  --prescription read from bar code or RFID
+    Rx_Okay: out event port; 
+  --to rate controller
+    VTBI: out data port PCA_Types::Drug_Volume;  --volume to be infused
+    Square_Bolus_Rate: out data port PCA_Types::Flow_Rate; 
+    Patient_Bolus_Rate: out data port PCA_Types::Flow_Rate; 
+    Basal_Rate: out data port PCA_Types::Flow_Rate;   --basal flow rate
+  --to patient bolus checker
+    Minimum_Time_Between_Bolus: out data port ICE_Types::Minute;
+  --to max drug per hour checker
+    Max_Drug_Per_Hour: out data port PCA_Types::Drug_Volume; 
+    Get_Drug_Record: out event data port PCA_Types::Drug_Code; 
+    The_Drug_Record: in event data port PCA_Types::Drug_Record; 
+    Drug_Not_In_Library : in event port;  --no drug found having the given drug code
+  --control panel
+ 
+    Confirm_Soft_Limit_Exception: in event port;  --clinician approved soft limit
+    Reject_Soft_Limit_Exception: in event port;  --clinician disapprove soft limit
+    Soft_Limit_Warning: out event port;   --prescription exceeds soft limit in drug library
+  --to safety
+    Hard_Limit_Violated: out event port;  --prescription exceeds hard limit in drug library
+  properties
+    Thread_Properties::Dispatch_Protocol=>Aperiodic;  
+end Prescription_Checker;
+
+thread implementation Prescription_Checker.imp
+ 
+end Prescription_Checker.imp;
+
+
+
+--handle ICE interface
+--contained by PCA_Operation::Operation_Thread_Group
+thread ICE_Thread
+  features
+  --from ICE:  danger detected-stop pumping
+    ICE_Stop_Pump: out event port;
+  --ICE interface
+    command: feature group PCA_Pump::PCA_Commands;
+    parameters: feature group PCA_Pump::PCA_Parameters;
+    status: feature group PCA_Pump::PCA_Status;
+--    security: feature group PCA_Pump::PCA_Security;  
+  --signals received by rate controller, or control panel
+  --pump control
+    Infusion_Flow_Rate: in data port PCA_Types::Flow_Rate;  --rate to pump
+  --from prescription checker
+    Rx_Okay: in event port;  --the prescription approved for infusion
+    Patient_Bolus_Rate: in data port PCA_Types::Flow_Rate; 
+    Square_Bolus_Rate: in data port PCA_Types::Flow_Rate; 
+    Basal_Rate: in data port PCA_Types::Flow_Rate; 
+    VTBI: in data port PCA_Types::Drug_Volume;
+  --from patient bolus checker
+    Patient_Request_Not_Too_Soon: in event port;
+    Patient_Request_Too_Soon: in event port;
+  --from safety
+    HW_Detected_Failure: in event port;
+    Stop_Pump_Completely: in event port;  --stop the pump
+    Pump_At_KVO_Rate: in event port;  --keep vein open    
+    Alarm : in event data port PCA_Types::Alarm_Type;  --alarm indication
+    Warning : in event data port PCA_Types::Warning_Type;  --warning indication
+  --reservoir
+    Door_Open: in data port Base_Types::Boolean;
+  --control panel
+--    Pause_Infusion: in event port;
+--    Resume_Infusion: in event port;
+    CP_Clinician_Request_Bolus: in event port;   --square bolus request from control panel
+    CP_Bolus_Duration: in event data port ICE_Types::Minute; --set square bolus time from control panel
+    Halt_Infusion: in event port;   --clinician pressed "stop" button
+    Begin_Infusion: in event port;  --clinician pressed "start" button   
+--    Begin_Priming: in event port;       --clinician pressed "prime" button 
+--    End_Priming: in event port;         --clinician pressed "off" button  
+	Alarm_Inactivation : in data port ICE_Types::Alarm_Signal;  --"On","Alarm_Off","Alarm_Paused","Audio_Off","Audio_Paused"
+  --from Max_Drug_Per_Hour_Watcher
+    Near_Max_Drug_Per_Hour: in event port;  --near maximum drug infused in any hour
+    Over_Max_Drug_Per_Hour: in event port;  --over maximum drug infused in any hour
+  properties
+    Thread_Properties::Dispatch_Protocol=>Aperiodic;  
+end ICE_Thread;
+
+thread implementation ICE_Thread.imp
+
+end ICE_Thread.imp;
+
+thread Patient_Bolus_Checker
+  features
+    Minimum_Time_Between_Bolus: in data port ICE_Types::Minute;
+    Patient_Button_Request: in event port;
+    Patient_Request_Not_Too_Soon: out event port;
+    Patient_Request_Too_Soon: out event port;
+end Patient_Bolus_Checker;
+
+thread implementation Patient_Bolus_Checker.imp
+ 
+end Patient_Bolus_Checker.imp;
+
+
+
+end PCA_Operation_Threads;

@@ -1,0 +1,39 @@
+--PCA_Security.aadl
+
+--holds security-related components
+
+package PCA_Security
+  public
+  with Base_Types, --Data_Model, PCA_Properties, 
+  PCA_Types, PCA_Pump, PCA_System;
+
+system security
+  features
+    Authenticate_Clinician: in event port;                --do clinician authentication
+    Clinician_Name: out data port Base_Types::String;     --clinician name extracted from scan data
+    Authenticate_Patient: in event port;                  --do patient authentication
+    Patient_Name: out data port Base_Types::String;       --patient name extracted from scan data
+    Authenticate_Prescription: in event port;             --do prescription authentication
+    Prescription: out data port PCA_Types::Prescription;  --extracted prescription from scan data
+    Authentication_fail: out event port;                  --authentication failed
+    Authentication_pass: out event port;                  --authentication passed
+    Scan_Data: in event data port PCA_Types::Scan_Data_Type;    --data from scanner
+    Provisioning: feature group PCA_Security::Provisioning_Signals;  --provisioning
+    ICE_Security: feature group PCA_Pump::PCA_Security;   --security channel on ICE
+    Security_Fault: out event port;                       --error during security operation 
+  --internal bus
+    i_bus: requires bus access PCA_Pump::Internal_Bus;
+  --to ICE adaptor
+    to_adaptor: requires bus access PCA_System::adaptor_bus;
+  --physical connection to maintenance processor
+    To_Maintenance: requires bus access PCA_System::internal_maintenance_bus;	
+end security;
+ 
+system implementation security.imp
+end security.imp;
+  
+feature group Provisioning_Signals
+end Provisioning_Signals;
+
+
+end PCA_Security;

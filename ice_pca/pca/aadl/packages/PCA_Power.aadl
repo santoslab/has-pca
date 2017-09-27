@@ -1,0 +1,111 @@
+--PCA_Power.aadl
+--Power Subsystem is section 9.2
+
+package PCA_Power
+  public
+  with Base_Types, Physical_Types, 
+--  PCA_Properties, 
+  PCA_Pump;
+  
+
+system power
+  features
+  --power bus
+    p_bus: requires bus access PCA_Pump::Power_Bus;
+    Low_Battery_Warning: out event port;
+      --5.1(5) The PCA pump shall detect battery failure.
+      --5.1(6) If the battery fails, the pump shall issue a defective-battery alarm.
+    Defective_Btty: out event port;
+    Voltage_OOR: out event port;   --power supply voltage is out of range
+      --5.1(2) The user interface must show that the PCA pump is working on battery backup, 
+      --and an estimate of the number of minutes of battery-powered infusion remain.
+    Using_Battery_Power: out data port Base_Types::Boolean;
+      --remaining battery time estimated by assuming linear voltage decline with stored energy
+    Remaining_Battery_Time: out data port;
+end power;
+
+system implementation power.imp
+  subcomponents
+    pwr: device power_control.imp;      --battery control
+    btty: device battery.imp;             --the physical battery
+    vcc: device power_supply.imp;
+  connections
+  --internal bus  
+    power_to_p_bus: bus access pwr.p_bus -> p_bus;  --unidirectional 
+  --warnings
+    dba: port pwr.Defective_Battery->Defective_Btty;
+    lbw: port pwr.Low_Battery_Warning->Low_Battery_Warning;  
+    rbt: port pwr.Remaining_Battery_Time->Remaining_Battery_Time;  
+    ubp: port pwr.Using_Battery_Power->Using_Battery_Power; 
+    vor: port pwr.Voltage_OOR -> Voltage_OOR;
+    --measure battery 
+    bv: port btty.Battery_Voltage->pwr.Battery_Voltage;
+    bc: port btty.Battery_Current->pwr.Battery_Current;
+    --measure power supply
+    psv: port vcc.Power_Voltage->pwr.Power_Voltage;
+ 
+ end power.imp;
+ 
+
+--this represents the physical battery, it has voltage and current outputs that really are measured by
+--power_control, but they need to be modeled as coming from somewhere
+--R6.3.0(1) battery backup
+--Battery is subsection 9.2.1
+device battery
+  features
+    Battery_Voltage : out data port Physical_Types::Voltage;
+    Battery_Current : out data port Physical_Types::Current;
+end battery;
+
+device implementation battery.imp
+
+end battery.imp;
+
+--power_control represents the battery control logic
+--remaining battery time estimated by assuming linear voltage delcine with stored energy
+--this is, of course, wrong; Li-ion batteries hold flat output voltage until near end-of-life
+--but the point here is not to create sophisticated battery algorithms, but use them in safety decisions
+-- section 9.2.2
+--R5.4.1(3) power and battery failure 
+--R6.3.0(2) remaining battery minutes 
+--R6.3.0(3) remaining battery accuracy 
+--R6.3.0(4) low-battery warning 
+--R6.3.0(5) battery failure alarm
+--R6.3.0(6): voltage out-of-range warning
+device power_control
+  features
+    --the battery control is expected to measure battery voltage and current
+    --these are modeled as if the values come from the physical battery
+    Battery_Voltage : in data port Physical_Types::Voltage;
+    Battery_Current : in data port Physical_Types::Current;
+      --R6.3.0(2)  If the estimated battery life remaining is less than DELTAlba = 3 minutes, the pump shall issue a low-battery warning.
+    Low_Battery_Warning: out event port;
+      --R6.3.0(5) battery failure alarm: The PCA pump shall detect battery failure and issue a battery failure alarm.
+    Defective_Battery: out event port;
+      --R6.3.0(6) voltage out-of-range warning
+    Voltage_OOR: out event port;   --power supply voltage is out of range
+    Power_Voltage : in data port Physical_Types::Voltage;  --measure power supply voltage
+      --R6.3.0(2) remaining battery minutes The user interface must show that the PCA pump is working on battery backup, 
+      --and an estimate of the number of minutes of battery-powered infusion remain.
+    Using_Battery_Power: out data port Base_Types::Boolean;
+      --remaining battery time is a complex, implementation-dependent calculation
+    Remaining_Battery_Time: out data port;
+  --power bus
+    p_bus: requires bus access PCA_Pump::Power_Bus;
+
+end power_control;
+
+device implementation power_control.imp  
+
+end power_control.imp;  
+
+device power_supply
+  features
+    Power_Voltage : out data port Physical_Types::Voltage;  --monitor power supply voltage
+end power_supply;
+  
+device implementation power_supply.imp
+end power_supply.imp; 
+
+  
+end PCA_Power;  

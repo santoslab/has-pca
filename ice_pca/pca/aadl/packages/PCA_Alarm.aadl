@@ -1,0 +1,180 @@
+--PCA_Alarm_Thread.aadl
+
+package PCA_Alarm
+  public
+  with
+--    Base_Types,	--predeclared AADL data types
+    ICE_Types,  --defines alarm feature group signals
+--    PCA_Properties,  --pca pump properties
+    PCA_Types,		--package holding types used only by this PCA pump model
+    PCA_Pump;            --main architecture package
+--  PFT renames data PCA_Types::Pump_Fault_Type; 
+    
+ 
+process alarm_process
+  features
+  --alarms
+    alrm: feature group PCA_Pump::PCA_Alarms;  --alarm to ICE interface
+    Alarm: out event data port PCA_Types::Alarm_Type;  --alarm to control panel
+    Warning: out event data port PCA_Types::Warning_Type;  --warning to control panel
+  --directives to operation
+    Stop_Pump_Completely: out event port;  --tell infusion thread to stop the pump
+    Pump_At_KVO_Rate: out event port;  --tell infusion thread to keep vein open 
+  --warning from operation 
+    Over_Max_Drug_Per_Hour: in event port;  --maximum drug allowed (over time) during bolus infusion
+    Hard_Limit_Violated: in event port;  --prescription exceeds hard limit in drug library
+    Prime_Failure: in event port;  --priming failure indication
+  --errors from fluid
+    Bubble: in event port;  --air-in-line embolism
+    Upstream_Occlusion: in event port;  --stoppage before pump
+    Downstream_Occlusion: in event port;  --stoppage after pump
+    Empty_Reservoir: in event port;  --no drug left
+    Low_Reservoir: in event port; --little drug left
+    Pump_Hot:  in event port;  --pump over temperature
+    Drug_Not_In_Library: in event port;  --null drug record returned from drug library
+  --flow information
+    Infusion_Flow_Rate: in data port PCA_Types::Flow_Rate;  --intended
+    Upstream_Flow_Rate: in data port PCA_Types::Flow_Rate;  --measured
+    Downstream_Flow_Rate: in data port PCA_Types::Flow_Rate;  --measured    
+  --battery
+    Defective_Battery: in event port;  --dead battery
+    Low_Battery_Warning: in event port;
+    Voltage_OOR: in event port;   --power supply voltage out-of-range
+  --control panel
+    CP_Reset_Alarm: in event port;  --control panel reset alarm
+  --security
+    Security_Fault: in event port;  --security fault
+  --log faults
+    Log_Fault: out event data port PCA_Types::Fault_Record;   
+end alarm_process;
+
+process implementation alarm_process.imp
+  subcomponents
+    alarm_thr: thread PCA_Alarm::alarm_thread.imp;
+    flow_rate: thread PCA_Alarm::Flow_Rate_Checker.imp;
+  connections
+  --alarms
+    alr: port alarm_thr.Alarm->Alarm;  
+    war: port alarm_thr.Warning->Warning;  
+ --ICE alarm feature group
+    al_fg: port alarm_thr.Alarm -> alrm.alarm_type;  --connection to port within feature group alrm
+    war_fg: port alarm_thr.Warning -> alrm.warning_type;  --connection to port within feature group alrm
+	im_fg: port alarm_thr.ICE_Immediate -> alrm.Immediate;    --likely to cause PATIENT injury or death within seconds to several minutes if uncorrected.
+    pr_fg: port alarm_thr.ICE_Prompt -> alrm.Prompt;       --"alarm": do not cause PATIENT injury or death until alarm_thr least several to many minutes have elapsed
+    de_fg: port alarm_thr.ICE_Delayed -> alrm.Delayed;       --"warning": cause PATIENT injury only after many minutes to hours have passed
+    ma_fg: port alarm_thr.ICE_Malfunction -> alrm.Malfunction;
+	ra_fg: port alrm.Reset_Alarm -> alarm_thr.ICE_Reset_Alarm;
+	as_fg: port alrm.Alarm_Signal <-> alarm_thr.ICE_Alarm_Signal;
+  --directives to operation
+    spc: port alarm_thr.Stop_Pump_Completely->Stop_Pump_Completely;
+    pkvo: port alarm_thr.Pump_At_KVO_Rate->Pump_At_KVO_Rate;
+  --warning from operation 
+    mdw: port Over_Max_Drug_Per_Hour->alarm_thr.Max_Dose_Warning;
+    hlv: port Hard_Limit_Violated->alarm_thr.Hard_Limit_Violation;
+  --errors
+    er: port Empty_Reservoir->alarm_thr.Empty_Res;
+    lr: port Low_Reservoir->alarm_thr.Low_Res;
+    pf: port Prime_Failure->alarm_thr.Prime_Failure;
+    ph: port Pump_Hot->alarm_thr.Pump_Hot;
+    dnl: port Drug_Not_In_Library->alarm_thr.Drug_Not_In_Library;
+    uso: port Upstream_Occlusion->alarm_thr.Upstream_Occlusion;
+    dso: port Downstream_Occlusion->alarm_thr.Downstream_Occlusion;
+    bub: port Bubble->alarm_thr.Bubble;
+  --electrical
+    db: port Defective_Battery->alarm_thr.Defective_Btty;
+    lb: port Low_Battery_Warning->alarm_thr.Low_Battery_Warning;
+    voo: port Voltage_OOR->alarm_thr.Voltage_OOR;
+  --log faults
+    lf: port alarm_thr.Log_Fault->Log_Fault;   
+  --flow rate check
+    ifr: port Infusion_Flow_Rate->flow_rate.Infusion_Flow_Rate;
+    ufr: port Upstream_Flow_Rate->flow_rate.Upstream_Flow_Rate;
+    dfr: port Downstream_Flow_Rate->flow_rate.Downstream_Flow_Rate;
+    baso: port flow_rate.Basal_Overinfusion->alarm_thr.Basal_Overinfusion;
+    bolo: port flow_rate.Bolus_Overinfusion->alarm_thr.Bolus_Overinfusion;
+    sbo: port flow_rate.Square_Bolus_Overinfusion->alarm_thr.Square_Bolus_Overinfusion; 
+    basu: port flow_rate.Basal_Underinfusion->alarm_thr.Basal_Underinfusion;
+    bolu: port flow_rate.Bolus_Underinfusion->alarm_thr.Bolus_Underinfusion;
+    sbu: port flow_rate.Square_Bolus_Underinfusion->alarm_thr.Square_Bolus_Underinfusion; 
+  --control panel
+    cpra: port CP_Reset_Alarm->alarm_thr.CP_Reset_Alarm;
+  --security
+    secf: port Security_Fault->alarm_thr.Security_Fault; 
+--the alarm process is working if the alarm thread is working
+
+end alarm_process.imp;
+
+thread alarm_thread
+  features
+  --alarms to control panel and ICE
+    Alarm: out event data port PCA_Types::Alarm_Type;  --alarm to control panel
+    Warning: out event data port PCA_Types::Warning_Type;  --warning to control panel
+	ICE_Immediate: out event port;    --likely to cause PATIENT injury or death within seconds to several minutes if uncorrected.
+    ICE_Prompt: out event port;       --"alarm": do not cause PATIENT injury or death until at least several to many minutes have elapsed
+    ICE_Delayed: out event port;       --"warning": cause PATIENT injury only after many minutes to hours have passed
+    ICE_Malfunction: out event port;
+	ICE_Reset_Alarm: in event port;
+	ICE_Alarm_Signal: in out event data port ICE_Types::Alarm_Signal;
+  --directives to Rate_Controller
+    Stop_Pump_Completely: out event port;  --tell infusion thread to stop the pump
+    Pump_At_KVO_Rate: out event port;  --tell infusion thread to keep vein open 
+  --from Max_Drug_Per_Hour_Watcher
+    Max_Dose_Warning: in event port;  --maximum drug allowed (over time) during bolus infusion
+  --from Prescription_Checker
+    Hard_Limit_Violation: in event port;  --prescription exceeds hard limit in drug library
+  --from Fluid
+    Empty_Res: in event port;  --no drug left
+    Low_Res: in event port; --little drug left
+    Pump_Hot:  in event port;  --pump over temperature
+    Upstream_Occlusion:  in event port;  
+    Downstream_Occlusion:  in event port;  --pump over temperature
+    Bubble: in event port; 
+  --from Boss
+    Prime_Failure: in event port;  --priming failure indication
+    CP_Reset_Alarm: in event port;  --control panel reset alarm(s)
+  --from Drug_Library
+    Drug_Not_In_Library: in event port;  --null drug record returned from drug library
+  --from power_control
+    Defective_Btty: in event port;  --dead battery
+    Low_Battery_Warning: in event port; --little battery energy left
+    Voltage_OOR: in event port;  --power supply voltage out-of-range
+  --from flow rate checker
+    Basal_Overinfusion: in event port  ;
+    Bolus_Overinfusion: in event port  ;
+    Square_Bolus_Overinfusion: in event port;  
+    Basal_Underinfusion: in event port ; 
+    Bolus_Underinfusion: in event port;  
+    Square_Bolus_Underinfusion: in event port;  
+  --from security
+    Security_Fault: in event port;
+  --from control_panel
+    Log_Fault: out event data port PCA_Types::Fault_Record;
+  properties
+    Thread_Properties::Dispatch_Protocol=>Aperiodic;  
+end alarm_thread;
+
+thread implementation alarm_thread.imp
+
+end alarm_thread.imp;
+
+thread Flow_Rate_Checker
+  features
+  --flow information
+    Infusion_Flow_Rate: in data port PCA_Types::Flow_Rate;  --intended
+    Upstream_Flow_Rate: in data port PCA_Types::Flow_Rate;  --measured
+    Downstream_Flow_Rate: in data port PCA_Types::Flow_Rate;  --measured    
+  --errors detected
+    Basal_Overinfusion: out event port;  
+    Bolus_Overinfusion: out event port;  
+    Square_Bolus_Overinfusion: out event port;  
+    Basal_Underinfusion: out event port;  
+    Bolus_Underinfusion: out event port;  
+    Square_Bolus_Underinfusion: out event port;  
+
+end Flow_Rate_Checker;
+
+thread implementation Flow_Rate_Checker.imp
+end Flow_Rate_Checker.imp;
+
+
+end PCA_Alarm;

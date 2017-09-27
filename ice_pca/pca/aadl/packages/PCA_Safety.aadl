@@ -1,0 +1,217 @@
+--PCA_Safety.aadl
+
+--safety architecture for PCA pump
+
+package PCA_Safety
+  public
+  with 
+    Base_Types, 
+    PCA_Types, PCA_System,
+    PCA_Alarm,PCA_System,
+    PCA_Pump;
+
+--R6.1.0(1) safety architecture
+--the safety subsystem contains components that detect, react, log and report faults
+system safety
+  features
+  --internal bus
+    i_bus: requires bus access PCA_Pump::Internal_Bus;
+  --power bus
+    p_bus: requires bus access PCA_Pump::Power_Bus;
+  --physical connection to bus adaptor
+    To_Adaptor: requires bus access PCA_System::adaptor_bus;
+  --alarms
+    alrm: feature group PCA_Pump::PCA_Alarms;  --alarm to ICE interface
+    Alarm: out event data port PCA_Types::Alarm_Type;  --alarm to control panel
+    Warning: out event data port PCA_Types::Warning_Type;  --warning to control panel
+  --directives to operation
+    Stop_Pump_Completely: out event port;  --tell infusion thread to stop the pump
+    Pump_At_KVO_Rate: out event port;  --tell infusion thread to keep vein open 
+  --signals to operation
+    POST_Done: out event port;  --power-on self test passed
+    POST_Fail: out event port;  --power-on self test failed
+    HW_Detected_Failure: out data port Base_Types::Boolean;
+  --problems from operation
+    Over_Max_Drug_Per_Hour: in event port;  --at or over maximum drug allowed (over time) during bolus infusion
+--    Near_Max_Drug_Per_Hour: in event port;  --near maximum drug allowed (over time) during bolus infusion
+    Hard_Limit_Violated: in event port;  --prescription exceeds hard limit in drug library
+    Drug_Not_In_Library: in event port;  --null drug record returned from drug library
+    Security_Fault: in event port;  --security violation
+    Infusion_Flow_Rate: in data port PCA_Types::Flow_Rate;  --intended
+  --drug reservoir problems
+    Empty_Reservoir: in event port;  --no drug left
+    Low_Reservoir: in event port; --little drug left
+  --power problems
+    Defective_Battery: in event port;  --dead battery
+    Low_Battery_Warning: in event port;
+    Voltage_OOR: in event port;  --voltage out-of-range
+  --pump problems
+    Bubble: in event port;
+    Pump_Too_Hot: in event port;
+    Prime_Failure: in event port;
+    Upstream_Occlusion: in event port;
+    Downstream_Occlusion: in event port;
+    Upstream_Flow_Rate: in data port PCA_Types::Flow_Rate;  --measured
+    Downstream_Flow_Rate: in data port PCA_Types::Flow_Rate;  --measured
+  --control panel
+    CP_Reset_Alarm: in event port;	--control panel resets alarm(s)
+  --fault log
+    Get_Fault_Log : in event port;  --put out fault log next period
+    The_Fault_Log : out event data port PCA_Types::Fault_Log;  --output fault log
+end safety;
+
+system implementation safety.imp
+  subcomponents
+    error_detect: device error_detector.imp;						--internal error detection
+    fault_log: device fault_logger.imp;				        --device holding fault log
+    led: device failure_led.imp;		                --hardware detected failure
+    alarm_process: process PCA_Alarm::alarm_process.imp;				--holds thread handling alarms
+    s_bus: bus Safety_Bus;  --internal to safety architecture
+    safety_core: processor Safety_Core;  --dedicated safety processor
+  connections
+  --bus accesses
+    i_bus_to_fault_log: bus access i_bus <-> fault_log.i_bus;
+    p_bus_to_fault_log: bus access p_bus <-> fault_log.p_bus;
+    error_detect_to_s_bus: bus access error_detect.s_bus -> s_bus;
+    s_bus_to_fault_log: bus access s_bus <-> fault_log.s_bus;
+    s_bus_to_led: bus access s_bus <-> led.s_bus;
+    i_bus_to_safety_core: bus access i_bus <-> safety_core.i_bus;
+    s_bus_to_safety_core: bus access s_bus <-> safety_core.s_bus;
+    safety_core_to_ice: bus access safety_core.to_adaptor <-> To_Adaptor;
+  --alarms
+    iceal: feature group alrm<->alarm_process.alrm;
+    uialr: port  alarm_process.Alarm->Alarm;
+    uiwar: port alarm_process.Warning->Warning;
+    hwdf: port error_detect.HW_Detected_Failure->HW_Detected_Failure;
+  --directives to operation
+    spc: port error_detect.Stop_Pump_Completely->Stop_Pump_Completely;  
+    sws: port alarm_process.Stop_Pump_Completely->error_detect.Software_Stop_Pump; 
+    kvo: port alarm_process.Pump_At_KVO_Rate->Pump_At_KVO_Rate;
+  --problems from operation
+    omdph: port Over_Max_Drug_Per_Hour->alarm_process.Over_Max_Drug_Per_Hour; 
+--    nmdph: port Near_Max_Drug_Per_Hour->alarm_process.Near_Max_Drug_Per_Hour; 
+    hlv: port Hard_Limit_Violated->alarm_process.Hard_Limit_Violated;
+    dnil: port Drug_Not_In_Library->alarm_process.Drug_Not_In_Library;
+    sf: port Security_Fault->alarm_process.Security_Fault;  
+  --drug reservoir problems
+    er: port Empty_Reservoir->alarm_process.Empty_Reservoir;
+    lr: port Low_Reservoir->alarm_process.Low_Reservoir; 
+  --power problems
+    db: port Defective_Battery->alarm_process.Defective_Battery;
+    lb: port Low_Battery_Warning->alarm_process.Low_Battery_Warning;
+    voor: port Voltage_OOR->fault_log.Voltage_OOR;
+    voo: port Voltage_OOR->alarm_Process.Voltage_OOR;
+  --pump problems
+    bbl: port Bubble->alarm_process.Bubble;
+    pth: port Pump_Too_Hot->alarm_process.Pump_Hot;
+    prf: port Prime_Failure->alarm_process.Prime_Failure;
+    uso: port Upstream_Occlusion->alarm_process.Upstream_Occlusion;
+    dso: port Downstream_Occlusion->alarm_process.Downstream_Occlusion;
+    pfr: port Infusion_Flow_Rate->alarm_process.Infusion_Flow_Rate;
+    usfr: port Upstream_Flow_Rate->alarm_process.Upstream_Flow_Rate;
+    dsfr: port Downstream_Flow_Rate->alarm_process.Downstream_Flow_Rate;
+  --alarm process to fault logger
+    lf: port alarm_process.Log_Fault->fault_log.Log_Fault; 
+  --hardware detected failures
+    postf: port error_detect.POST_Failure->fault_log.POST_Failure;
+    postfa: port error_detect.POST_Failure->POST_Fail;
+    postd: port error_detect.POST_Done->POST_Done;
+    ramf: port error_detect.RAM_Failure->fault_log.RAM_Failure;
+    romf: port error_detect.ROM_Failure->fault_log.ROM_Failure;
+    cpuf: port error_detect.CPU_Failure->fault_log.CPU_Failure;
+    tmf: port error_detect.Thread_Monitor_Failure->fault_log.Thread_Monitor_Failure;
+ --control panel
+    cpra: port CP_Reset_Alarm->alarm_process.CP_Reset_Alarm;
+ --turn on LED upon hardware-detected failure
+    hdf: port error_detect.HW_Detected_Failure->led.Illuminate;
+ --fault log
+    gfl: port Get_Fault_Log -> fault_log.Get_Log;
+    tfl: port fault_log.The_Log -> The_Fault_Log;
+  properties
+   Actual_Processor_Binding => (reference (safety_core)) applies to alarm_process;
+   Actual_Processor_Binding => (reference (safety_core)) applies to alarm_process.alarm_thr;
+   Actual_Processor_Binding => (reference (safety_core)) applies to alarm_process.flow_rate;
+end safety.imp;
+
+
+--error_detector represents the internal error detection of the PCA hardware
+--R6.4.0(3) continuous fault-detection 
+--R6.4.0(4) single-event upsets
+
+device error_detector
+	features
+	  Software_Stop_Pump: in event port;  --from safety process
+	  Stop_Pump_Completely: out event port;  --hard stop
+    POST_Failure: out event port;  --power-on self test failed;  POST run automatically at power-on
+    POST_Done: out event port;  --power-on self test passed
+    RAM_Failure: out event port;   --RAM test failed
+    ROM_failure: out event port;   --ROM test failed
+    CPU_Failure: out event port;   --CPU failed
+    Thread_Monitor_Failure: out event port;  --some thread failed its heartbeat
+    HW_Detected_Failure: out data port Base_Types::Boolean;  --disjunction of hardware-detected failures, lights LED
+  	-- WrongValue
+  --safety bus
+    s_bus: requires bus access Safety_Bus;
+end error_detector;
+
+device implementation error_detector.imp
+end error_detector.imp;
+
+--R6.4.0(7) hardware fault indicator
+device failure_led	--illuminated LED when hardware-failure detected
+  features
+    Illuminate: in data port Base_Types::Boolean;  --turn-on led
+    Light: out data port Base_Types::Boolean;  --light emitted by LED 
+  --safety bus
+    s_bus: requires bus access Safety_Bus;
+end failure_led;
+
+device implementation failure_led.imp
+end failure_led.imp;
+
+--fault_logger represents the device that holds the store of fault indications
+--R5.6.0(2) fault log 
+--R5.6.0(3) time stamp 
+--R5.6.0(5) log retention 
+--R6.4.0(5) masked faults 
+--R5.6.0(8) real-time clock
+
+device fault_logger
+  features
+  --internal bus
+    i_bus: requires bus access PCA_Pump::Internal_Bus;
+  --power bus
+    p_bus: requires bus access PCA_Pump::Power_Bus;
+  --safety bus
+    s_bus: requires bus access Safety_Bus;
+    --record a fault in the log
+    Log_Fault : in event data port PCA_Types::Fault_Record;
+ --     {BLESS::Assertion=>"<< : :=CURRENT_FAULT_RECORD>>";};
+    --ask for the whole fault log
+    Get_Log : in event port;
+    --log output
+    The_Log : out event data port PCA_Types::Fault_Log; 
+    --hardware faults directly recorded by 
+    POST_Failure: in event port;  --power-on self test failed;  POST run automatically at power-on
+    RAM_Failure: in event port;   --RAM test failed
+    ROM_Failure: in event port;   --ROM test failed
+    CPU_Failure: in event port;   --CPU failed
+    Thread_Monitor_Failure: in event port;  --some thread failed its heartbeat
+    Voltage_OOR: in event port;   --power supply voltage is out of range
+end fault_logger;
+
+--this represents the device implementation that stores & retrieves fault indications
+device implementation fault_logger.imp
+end fault_logger.imp;
+
+bus Safety_Bus
+end Safety_Bus;
+
+processor Safety_Core
+  features
+    i_bus: requires bus access PCA_Pump::Internal_Bus;
+    s_bus: requires bus access Safety_Bus;
+    to_adaptor: requires bus access PCA_System::adaptor_bus;
+end Safety_Core;
+
+end PCA_Safety;
